@@ -12,6 +12,8 @@
 	"type": "commonjs",
 	"description": "",
 	"devDependencies": {
-		"browser-sync": "^3.0.3"
+		"browser-sync": "^3.0.3",
+		"stylelint": "^16.14.1",
+		"stylelint-config-standard": "^37.0.0"
 	}
 }
