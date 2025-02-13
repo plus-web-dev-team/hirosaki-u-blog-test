@@ -5,120 +5,139 @@ let offset = 0; // 取得開始位置
 let totalCount = 0; // 全記事数
 
 document.addEventListener("DOMContentLoaded", () => {
-  console.log("DOMContentLoaded: ページの読み込み完了");
+	console.log("DOMContentLoaded: ページの読み込み完了");
+	const contentContainer = document.getElementById("content");
+	const paginationContainer = document.getElementById("pagination");
 
-  const contentContainer = document.getElementById("content");
-  const paginationContainer = document.getElementById("pagination");
+	// APIから記事を取得する関数
+	async function fetchArticles(offset) {
+		// ローディング表示
+		contentContainer.innerHTML =
+			'<div class="loading">記事を読み込んでいます...</div>';
 
-  // APIから記事を取得
-  async function fetchArticles(offset) {
-    const cacheKey = `microcms_blog_page_${offset}`;
-    const cachedData = sessionStorage.getItem(cacheKey);
+		const cacheKey = `microcms_blog_page_${offset}`;
+		const cachedData = sessionStorage.getItem(cacheKey);
 
-    if (cachedData) {
-      console.log("キャッシュからデータを取得");
-      renderArticles(JSON.parse(cachedData));
-      return;
-    }
+		if (cachedData) {
+			console.log("キャッシュからデータを取得");
+			renderArticles(JSON.parse(cachedData));
+			return;
+		}
 
-    try {
-      const response = await fetch(
-        `${endpoint}?limit=${limit}&offset=${offset}`,
-        {
-          headers: { "X-API-KEY": apiKey },
-          mode: "cors", // CORS対策
-        },
-      );
+		try {
+			const response = await fetch(
+				`${endpoint}?limit=${limit}&offset=${offset}`,
+				{
+					headers: {
+						"X-API-KEY": apiKey,
+						"Content-Type": "application/json",
+					},
+					mode: "cors",
+				},
+			);
 
-      console.log("APIレスポンスステータス:", response.status);
+			if (!response.ok) {
+				throw new Error(`HTTPエラー: ${response.status}`);
+			}
 
-      if (!response.ok) {
-        throw new Error(`HTTPエラー: ${response.status}`);
-      }
+			const data = await response.json();
 
-      const data = await response.json();
+			if (!data.contents || !Array.isArray(data.contents)) {
+				throw new Error("データフォーマットが不正です");
+			}
 
-      if (!data.contents || !Array.isArray(data.contents)) {
-        throw new Error("データフォーマットが不正");
-      }
+			console.log("APIからデータを取得しました:", data);
+			totalCount = data.totalCount;
+			sessionStorage.setItem(cacheKey, JSON.stringify(data));
+			renderArticles(data);
+		} catch (error) {
+			console.error("APIエラー:", error);
+			contentContainer.innerHTML = `
+				<div class="error">
+					<p>データの取得に失敗しました。</p>
+					<p>${error.message}</p>
+					<button onclick="location.reload()">再読み込み</button>
+				</div>`;
+		}
+	}
 
-      console.log("APIから取得したデータ:", data);
-      totalCount = data.totalCount;
-      sessionStorage.setItem(cacheKey, JSON.stringify(data)); // キャッシュ保存
-      renderArticles(data);
-    } catch (error) {
-      console.error("APIエラー:", error);
-      contentContainer.innerHTML = `<p>データの取得に失敗しました。エラー: ${error.message}</p>`;
-    }
-  }
+	// 記事を表示する関数
+	function renderArticles(data) {
+		contentContainer.innerHTML = "";
 
-  // 記事を表示
-  function renderArticles(data) {
-    contentContainer.innerHTML = "";
-    data.contents.forEach((item, index) => {
-      console.log(`記事${index + 1}:`, item);
+		data.contents.forEach((item, index) => {
+			const createdAt = new Date(item.createdAt);
+			const formattedDate = createdAt.toLocaleDateString("ja-JP", {
+				year: "numeric",
+				month: "2-digit",
+				day: "2-digit",
+			});
 
-      const createdAt = new Date(item.createdAt);
-      const formattedDate = createdAt.toLocaleDateString("ja-JP", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-      });
+			const article = document.createElement("article");
+			article.classList.add("article");
 
-      const article = document.createElement("div");
-      article.classList.add("article");
-
-      article.innerHTML = `
-        <h2 class="article-title" style="cursor: pointer;">${item.title}</h2>
-        <p class="article-date">${formattedDate}</p>
-        <div class="article-content" style="display: none;"></div>
+			article.innerHTML = `
+        <h2 class="article-title">${item.title}</h2>
+        <time class="article-date" datetime="${item.createdAt}">${formattedDate}</time>
+        <div class="article-content"></div>
       `;
-      contentContainer.appendChild(article);
 
-      const title = article.querySelector(".article-title");
-      const content = article.querySelector(".article-content");
+			contentContainer.appendChild(article);
 
-      title.addEventListener("click", () => {
-        if (!content.innerHTML) {
-          console.log(`記事${index + 1}の本文をロード: ${item.title}`);
-          content.innerHTML = item.content || "説明文がありません";
-        }
-        content.style.display =
-          content.style.display === "block" ? "none" : "block";
-      });
-    });
+			const title = article.querySelector(".article-title");
+			const content = article.querySelector(".article-content");
 
-    renderPagination();
-  }
+			title.addEventListener("click", () => {
+				if (!content.innerHTML) {
+					content.innerHTML = item.content || "コンテンツがありません";
+				}
+				content.style.display =
+					content.style.display === "none" || !content.style.display
+						? "block"
+						: "none";
+			});
+		});
 
-  // ページネーション
-  function renderPagination() {
-    paginationContainer.innerHTML = "";
+		renderPagination();
+	}
 
-    const totalPages = Math.ceil(totalCount / limit);
-    const currentPage = Math.floor(offset / limit) + 1;
+	// ページネーションを表示する関数
+	function renderPagination() {
+		paginationContainer.innerHTML = "";
 
-    if (currentPage > 1) {
-      const prevButton = document.createElement("button");
-      prevButton.innerText = "前のページ";
-      prevButton.addEventListener("click", () => {
-        offset -= limit;
-        fetchArticles(offset);
-      });
-      paginationContainer.appendChild(prevButton);
-    }
+		const totalPages = Math.ceil(totalCount / limit);
+		const currentPage = Math.floor(offset / limit) + 1;
 
-    if (currentPage < totalPages) {
-      const nextButton = document.createElement("button");
-      nextButton.innerText = "次のページ";
-      nextButton.addEventListener("click", () => {
-        offset += limit;
-        fetchArticles(offset);
-      });
-      paginationContainer.appendChild(nextButton);
-    }
-  }
+		const nav = document.createElement("nav");
+		nav.setAttribute("aria-label", "ページナビゲーション");
 
-  // 初回ロード
-  fetchArticles(offset);
+		if (currentPage > 1) {
+			const prevButton = document.createElement("button");
+			prevButton.classList.add("pagination-button", "prev");
+			prevButton.innerText = "前のページ";
+			prevButton.addEventListener("click", () => {
+				offset -= limit;
+				fetchArticles(offset);
+				window.scrollTo(0, 0);
+			});
+			nav.appendChild(prevButton);
+		}
+
+		if (currentPage < totalPages) {
+			const nextButton = document.createElement("button");
+			nextButton.classList.add("pagination-button", "next");
+			nextButton.innerText = "次のページ";
+			nextButton.addEventListener("click", () => {
+				offset += limit;
+				fetchArticles(offset);
+				window.scrollTo(0, 0);
+			});
+			nav.appendChild(nextButton);
+		}
+
+		paginationContainer.appendChild(nav);
+	}
+
+	// 初回ロード
+	fetchArticles(offset);
 });
